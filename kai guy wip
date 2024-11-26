@@ -1,0 +1,232 @@
+local AztechTeam = {}
+
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local humanoid, character = nil, nil
+local isAdaptionActive = false  -- Keeps track of Adaption toggle
+local isinstinctsActive = false  -- Keep track of Instincts toggle
+local secretTechniqueTool = nil  -- Store the Secret Technique tool reference
+
+local UserInputService = game:GetService("UserInputService")
+
+function AztechTeam.initializeCharacter()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+end
+
+AztechTeam.initializeCharacter()
+player.CharacterAdded:Connect(AztechTeam.initializeCharacter) -- Reinitialize on character respawn
+
+function AztechTeam.setToolName(hotbarIndex, moveName)
+    local hotbar = playerGui:FindFirstChild("Hotbar")
+    if hotbar then
+        local backpack = hotbar:FindFirstChild("Backpack")
+        local hotbarFrame = backpack and backpack:FindFirstChild("Hotbar")
+        local baseButton = hotbarFrame and hotbarFrame:FindFirstChild(tostring(hotbarIndex))
+        if baseButton then
+            local toolNameLabel = baseButton:FindFirstChild("Base") and baseButton.Base:FindFirstChild("ToolName")
+            if toolNameLabel then
+                toolNameLabel.Text = moveName
+            end
+        end
+    end
+end
+
+-- Set move names
+AztechTeam.setToolName(1, "Think fast!")
+AztechTeam.setToolName(2, "Focus now.")
+AztechTeam.setToolName(3, "Get up!")
+AztechTeam.setToolName(4, "Don't get cocky.")
+
+-- Change speed and settings
+local birdUSuck = {
+    -- M1 replacements
+    [10469493270] = {replacementId = "16515503507", startTime = 0, speed = 1},  -- 1st M1
+    [10469630950] = {replacementId = "15240216931", startTime = 0, speed = 1},  -- 2nd M1
+    [10469639222] = {replacementId = "15240176873", startTime = 0, speed = 1},  -- 3rd M1
+    [10469643643] = {replacementId = "16552234590", startTime = 0, speed = 1},  -- 4th M1
+
+    -- Moves
+    [10468665991] = {replacementId = "18896127525", startTime = 0.2, speed = 1}, -- Move 1
+    [10466974800] = {replacementId = "15290930205", startTime = 0, speed = 1.3},  -- Move 2
+    [10471336737] = {replacementId = "16597912086", startTime = 0.5, speed = 1},  -- Move 3
+    [12510170988] = {replacementId = "18464372850", startTime = 2, speed = 1},    -- Move 4
+
+    -- moves like downslam etc...
+    [10470104242] = {replacementId = "12684185971", startTime = 0, speed = 1},    -- Downslam
+    [10503381238] = {replacementId = "14900168720", startTime = 1.3, speed = 1},  -- Mini Uppercut
+    [10479335397] = {replacementId = "14046756619", startTime = 0, speed = 0.7},  -- Front Dash
+}
+
+function AztechTeam.stopAllAnimations()
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+end
+
+function AztechTeam.playReplacementAnimation(config)
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. config.replacementId
+    local track = humanoid:LoadAnimation(anim)
+    track:Play()
+    track:AdjustSpeed(0)
+    track.TimePosition = config.startTime
+    track:AdjustSpeed(config.speed)
+end
+
+humanoid.AnimationPlayed:Connect(function(animationTrack)
+    local animId = tonumber(animationTrack.Animation.AnimationId:match("%d+"))
+    local config = birdUSuck[animId]
+    if config then
+        AztechTeam.stopAllAnimations()
+        AztechTeam.playReplacementAnimation(config)
+    end
+end)
+
+character.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("BodyVelocity") then
+        descendant.Velocity = Vector3.new(descendant.Velocity.X, 0, descendant.Velocity.Z)
+    end
+end)
+
+-- Create the Instincts tool (teleports away from attacks)
+local function createInstinctsTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Instincts"
+    tool.RequiresHandle = false
+    tool.Parent = player.Backpack
+
+    tool.Activated:Connect(function()
+        isinstinctsActive = not isinstinctsActive
+        if isinstinctsActive then
+            print("Instincts activated: Teleporting out of attacks!")
+        else
+            print("Instincts deactivated: Normal defense.")
+        end
+    end)
+end
+
+-- Function to teleport far enough to avoid attacks when Instincts is active
+function AztechTeam.teleportOutOfAttack()
+    if isinstinctsActive then
+        -- Generate a larger random offset for teleportation
+        local randomOffset = Vector3.new(math.random(-50, 50), 0, math.random(-50, 50))
+        local newPosition = character.HumanoidRootPart.Position + randomOffset
+        character:SetPrimaryPartCFrame(CFrame.new(newPosition))
+    end
+end
+
+-- Detect and teleport away from any incoming attacks
+character.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("BodyVelocity") or descendant:IsA("BodyGyro") or descendant:IsA("BodyPosition") then
+        -- If the attack would affect the player, teleport far away
+        AztechTeam.teleportOutOfAttack()
+    end
+end)
+
+-- Create the Regenerate tool (heals 50 health when activated)
+local function createRegenerateTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Regenerate"
+    tool.RequiresHandle = false
+    tool.Parent = player.Backpack
+
+    tool.Activated:Connect(function()
+        if humanoid.Health < humanoid.MaxHealth then
+            humanoid.Health = math.min(humanoid.Health + 50, humanoid.MaxHealth)
+            print("Regenerate activated: Health increased by 50.")
+        else
+            print("Health is already full.")
+        end
+    end)
+end
+
+-- Initialize the Instincts, Regenerate, and Secret Technique tools
+createInstinctsTool()
+createRegenerateTool()
+
+-- Create the Secret Technique tool (teleport to nearest player)
+local function createSecretTechniqueTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Secret Technique"  -- Tool name set to "Secret Technique"
+    tool.RequiresHandle = false
+    tool.Parent = player.Backpack
+
+    -- No need for the tool activation event here since we trigger it with the E key
+    return tool
+end
+
+-- Function to teleport the player to the nearest player
+local function teleportToNearestPlayer()
+    local nearestPlayer, shortestDistance = nil, math.huge
+    local playerPosition = character.HumanoidRootPart.Position
+
+    -- Find the nearest player
+    for _, otherPlayer in ipairs(game.Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local otherPosition = otherPlayer.Character.HumanoidRootPart.Position
+            local distance = (otherPosition - playerPosition).Magnitude
+            if distance < shortestDistance then
+                nearestPlayer = otherPlayer
+                shortestDistance = distance
+            end
+        end
+    end
+
+    -- Teleport to nearest player if found
+    if nearestPlayer and nearestPlayer.Character and nearestPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        character:SetPrimaryPartCFrame(nearestPlayer.Character.HumanoidRootPart.CFrame)
+        print("Secret Technique activated: Teleported to the nearest player!")
+    else
+        print("No nearby players found.")
+    end
+end
+
+-- Initialize the Secret Technique tool
+secretTechniqueTool = createSecretTechniqueTool()
+
+-- Detect key presses and trigger respective actions
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end  -- Ignore if the input is processed by the game
+
+    -- E key for Secret Technique
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.E then
+        teleportToNearestPlayer()  -- Trigger the teleportation when "E" is pressed
+        print("Secret Technique activated!")
+
+    -- R key for Instincts
+    elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.R then
+        isinstinctsActive = not isinstinctsActive
+        if isinstinctsActive then
+            print("Instincts activated: Teleporting out of attacks!")
+        else
+            print("Instincts deactivated: Normal defense.")
+        end
+
+    -- T key for Regenerate
+    elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.T then
+        if humanoid.Health < humanoid.MaxHealth then
+            humanoid.Health = math.min(humanoid.Health + 50, humanoid.MaxHealth)
+            print("Regenerate activated: Health increased by 50.")
+        else
+            print("Health is already full.")
+        end
+    end
+end)
+
+-- Update the GUI text (magic health frame)
+local function findGuiAndSetText()
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    if screenGui then
+        local magicHealthFrame = screenGui:FindFirstChild("MagicHealth")
+        if magicHealthFrame then
+            local textLabel = magicHealthFrame:FindFirstChild("TextLabel")
+            if textLabel then
+                textLabel.Text = "Haha! Time to test who's truly better!"
+            end
+        end
+    end
+end
+
+playerGui.DescendantAdded:Connect(findGuiAndSetText)
+findGuiAndSetText()
